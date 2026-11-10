@@ -15,23 +15,35 @@ fn main() {
         size: 100,
     };
 
-    let dir = scan_directory(Path::new("."));
-    
-    println!("{}",dir);
+    let directorio = "test";
 
-    println!("Path: {} | Size: {}",info_test.path.display(),info_test.size
-)
+    let dir = scan_directory(Path::new(&directorio));
+    match dir {
+    
+    Ok(files) => {
+        for file in files {
+            println!("Path: {} | Size:{}", file.path.display(), file.size)
+        }
+    }
+    Err(error) => {
+        eprintln!("{}",error)
+    }
+};
 }
 fn scan_directory(path:&Path) -> std::io::Result<Vec<FileInfo>> {
     let mut files: Vec<FileInfo> = Vec::new();
+    let mut x: Vec<FileInfo> = Vec::new();
     
     for file in fs::read_dir(path)? {
         let file = file?;
         if !file.metadata()?.is_file() {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "La ruta debe ser una carpeta"
-            ));
+            if file.metadata()?.is_dir() {
+                let file = file.path();
+                x = scan_directory(&file)?;
+                files.extend(x);
+            } else {
+            continue;
+            }
         } else {
         let file_length = file.metadata()?.len();
         let path = file.path();
@@ -42,5 +54,4 @@ fn scan_directory(path:&Path) -> std::io::Result<Vec<FileInfo>> {
         files.push(file1);
     }}
     Ok(files)
-
 }
