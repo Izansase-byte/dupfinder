@@ -1,6 +1,7 @@
-use std::path::PathBuf;
-use std::fs;
+use std::path::{self, PathBuf};
+use std::{fs, vec};
 use std::path::Path;
+use std::collections::HashMap;
 
 mod report;
 
@@ -51,4 +52,16 @@ fn scan_directory(path:&Path) -> std::io::Result<Vec<FileInfo>> {
         files.push(file1);
     }}
     Ok(files)
+}
+fn group_files_by_size(files: &[FileInfo]) -> HashMap<u64, Vec<&FileInfo>> {
+    let mut groups: HashMap<u64,Vec<&FileInfo>> = HashMap::new();
+
+    for file in files {
+        groups.entry(file.size).or_default().push(file);
+    }
+        groups
+        }
+fn hash_file(path: &Path) -> std::io::Result<blake3::Hash> {
+    let content = fs::read(path)?;
+    Ok(blake3::hash(&content))
 }
