@@ -1,3 +1,4 @@
+
 use std::path::{self, PathBuf};
 use std::{fs, vec};
 use std::path::Path;
@@ -11,24 +12,25 @@ pub struct FileInfo {
 }
 
 fn main() {
-
     let directorio = "test";
 
-    let dir = scan_directory(Path::new(&directorio));
-    match dir {
-    
-    Ok(files) => {
-        for file in files {
-            println!("Path: {} | Size:{}", file.path.display(), file.size)
+    match scan_directory(Path::new(directorio)) {
+Ok(files) => {
+match find_duplicates(&files) {
+    Ok(duplicates) => {
+        if duplicates.is_empty
+        for (i, group) in duplicates.iter().enumerate() {
+            println!("\nDuplicate group {}:", i+1);
+
+            for path in group {
+                println!("  {}", path.display());
+            }
         }
     }
-    Err(error) => {
-        eprintln!("{}",error)
-    }
-
-    
-};
+    Err(error) => eprintln!("Error: {}", error),
+}    
 }
+}}
 fn scan_directory(path:&Path) -> std::io::Result<Vec<FileInfo>> {
     let mut files: Vec<FileInfo> = Vec::new();
     
@@ -76,7 +78,7 @@ fn compare_files(file1: &FileInfo, file2: &FileInfo) -> bool {
     }
 }
 
-fn find_duplicates(files:[&FileInfo]) -> std::io::Result<Vec<Vec<&PathBuf>>> {
+fn find_duplicates(files:&[FileInfo]) -> std::io::Result<Vec<Vec<&PathBuf>>> {
     let groups = group_files_by_size(files);
 
     let mut duplicates: Vec<Vec<&FileInfo>> = Vec::new();
@@ -85,13 +87,18 @@ fn find_duplicates(files:[&FileInfo]) -> std::io::Result<Vec<Vec<&PathBuf>>> {
         if group.len() < 2 {
             continue;
         }
-        duplicates.push(group);
 
-        let mut hashes: HashMap<>blake3::Hash, Vec<&PathBuf>> = HashMap::new();
+        let mut hashes: HashMap<blake3::Hash, Vec<PathBuf>>> = HashMap::new();
 
         for file in group {
             let hash = hash_file(&file.path)?;
-            hashes.entry(hash).or_default().push(&file.path)?;
+            hashes.entry(hash).or_default().push(file.path)?;
+        }
+
+        for (_hash,paths) in hashes {
+            if paths.len() >= 2 {
+                duplicates.push(paths);
+            }
         }
     }
     Ok(duplicates)
