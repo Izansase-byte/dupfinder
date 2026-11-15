@@ -1,73 +1,71 @@
-
-use std::path::{self, PathBuf};
-use std::{fs, vec};
-use std::path::Path;
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 mod report;
 
 pub struct FileInfo {
-    path:PathBuf,
-    size:u64,
+    path: PathBuf,
+    size: u64,
 }
 
 fn main() {
     let directorio = "test";
 
     match scan_directory(Path::new(directorio)) {
-Ok(files) => {
-match find_duplicates(&files) {
-    Ok(duplicates) => {
-        if duplicates.is_empty
-        for (i, group) in duplicates.iter().enumerate() {
-            println!("\nDuplicate group {}:", i+1);
+        Ok(files) => match find_duplicates(&files) {
+            Ok(duplicates) => {
+                if duplicates.is_empty() {
+                    println!("No duplicates found!");
+                }
 
-            for path in group {
-                println!("  {}", path.display());
+                for (i, group) in duplicates.iter().enumerate() {
+                    println!("\nDuplicate group {}:", i + 1);
+
+                    for path in group {
+                        println!("  {}", path.display());
+                    }
+                }
             }
-        }
+            Err(error) => eprintln!("Error: {}", error),
+        },
+        Err(error) => eprintln!("Scan error: {}", error),
     }
-    Err(error) => eprintln!("Error: {}", error),
-}    
 }
-}}
-fn scan_directory(path:&Path) -> std::io::Result<Vec<FileInfo>> {
+
+fn scan_directory(path: &Path) -> std::io::Result<Vec<FileInfo>> {
     let mut files: Vec<FileInfo> = Vec::new();
-    
+
     for file in fs::read_dir(path)? {
         let file = file?;
-        if !file.metadata()?.is_file() {
-            if file.metadata()?.is_dir() {
-                let file = file.path();
-                let nested_files = scan_directory(&file)?;
-                files.extend(nested_files);
-            } else {
-                continue;
-            }
-        } else {
-            let file_length = file.metadata()?.len();
-            let path = file.path();
-            let file1 = FileInfo {
-                path: path,
-                size: file_length,
-            };
-            files.push(file1);
+        if file.metadata()?.is_dir() {
+            files.extend(scan_directory(&file.path())?);
+        } else if file.metadata()?.is_file() {
+            files.push(FileInfo {
+                path: file.path(),
+                size: file.metadata()?.len(),
+            });
         }
     }
+
     Ok(files)
 }
+
 fn group_files_by_size(files: &[FileInfo]) -> HashMap<u64, Vec<&FileInfo>> {
-    let mut groups: HashMap<u64,Vec<&FileInfo>> = HashMap::new();
+    let mut groups: HashMap<u64, Vec<&FileInfo>> = HashMap::new();
 
     for file in files {
         groups.entry(file.size).or_default().push(file);
     }
-        groups
-        }
+
+    groups
+}
+
 fn hash_file(path: &Path) -> std::io::Result<blake3::Hash> {
     let content = fs::read(path)?;
     Ok(blake3::hash(&content))
 }
+
 fn compare_files(file1: &FileInfo, file2: &FileInfo) -> bool {
     if file1.size != file2.size {
         return false;
@@ -78,28 +76,28 @@ fn compare_files(file1: &FileInfo, file2: &FileInfo) -> bool {
     }
 }
 
-fn find_duplicates(files:&[FileInfo]) -> std::io::Result<Vec<Vec<&PathBuf>>> {
+fn find_duplicates(files: &[FileInfo]) -> std::io::Result<Vec<Vec<PathBuf>>> {
     let groups = group_files_by_size(files);
-
-    let mut duplicates: Vec<Vec<&FileInfo>> = Vec::new();
+    let mut duplicates: Vec<Vec<PathBuf>> = Vec::new();
 
     for (_size, group) in groups {
         if group.len() < 2 {
             continue;
         }
 
-        let mut hashes: HashMap<blake3::Hash, Vec<PathBuf>>> = HashMap::new();
+        let mut hashes: HashMap<blake3::Hash, Vec<PathBuf>> = HashMap::new();
 
         for file in group {
             let hash = hash_file(&file.path)?;
-            hashes.entry(hash).or_default().push(file.path)?;
+            hashes.entry(hash).or_default().push(file.path.clone());
         }
 
-        for (_hash,paths) in hashes {
+        for (_hash, paths) in hashes {
             if paths.len() >= 2 {
                 duplicates.push(paths);
             }
         }
     }
+
     Ok(duplicates)
 }
