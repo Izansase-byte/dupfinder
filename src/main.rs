@@ -37,20 +37,21 @@ fn scan_directory(path:&Path) -> std::io::Result<Vec<FileInfo>> {
         if !file.metadata()?.is_file() {
             if file.metadata()?.is_dir() {
                 let file = file.path();
-                let x = scan_directory(&file)?;
-                files.extend(x);
+                let nested_files = scan_directory(&file)?;
+                files.extend(nested_files);
             } else {
-            continue;
+                continue;
             }
         } else {
-        let file_length = file.metadata()?.len();
-        let path = file.path();
-        let file1 = FileInfo {
-            path:path,
-            size:file_length,
-        };
-        files.push(file1);
-    }}
+            let file_length = file.metadata()?.len();
+            let path = file.path();
+            let file1 = FileInfo {
+                path: path,
+                size: file_length,
+            };
+            files.push(file1);
+        }
+    }
     Ok(files)
 }
 fn group_files_by_size(files: &[FileInfo]) -> HashMap<u64, Vec<&FileInfo>> {
@@ -64,4 +65,13 @@ fn group_files_by_size(files: &[FileInfo]) -> HashMap<u64, Vec<&FileInfo>> {
 fn hash_file(path: &Path) -> std::io::Result<blake3::Hash> {
     let content = fs::read(path)?;
     Ok(blake3::hash(&content))
+}
+fn compare_files(file1: &FileInfo, file2: &FileInfo) -> bool {
+    if file1.size != file2.size {
+        return false;
+    }
+    match (hash_file(&file1.path), hash_file(&file2.path)) {
+        (Ok(hash1), Ok(hash2)) => hash1 == hash2,
+        _ => false,
+    }
 }
