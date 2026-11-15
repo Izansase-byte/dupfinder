@@ -75,3 +75,24 @@ fn compare_files(file1: &FileInfo, file2: &FileInfo) -> bool {
         _ => false,
     }
 }
+
+fn find_duplicates(files:[&FileInfo]) -> std::io::Result<Vec<Vec<&PathBuf>>> {
+    let groups = group_files_by_size(files);
+
+    let mut duplicates: Vec<Vec<&FileInfo>> = Vec::new();
+
+    for (_size, group) in groups {
+        if group.len() < 2 {
+            continue;
+        }
+        duplicates.push(group);
+
+        let mut hashes: HashMap<>blake3::Hash, Vec<&PathBuf>> = HashMap::new();
+
+        for file in group {
+            let hash = hash_file(&file.path)?;
+            hashes.entry(hash).or_default().push(&file.path)?;
+        }
+    }
+    Ok(duplicates)
+}
