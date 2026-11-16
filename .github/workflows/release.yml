@@ -1,0 +1,92 @@
+name: Release binaries
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: dupfinder-linux-x86_64
+            binary: dupfinder
+          - os: windows-latest
+            artifact: dupfinder-windows-x86_64
+            binary: dupfinder.exe
+          - os: macos-15-intel
+            artifact: dupfinder-macos-x86_64
+            binary: dupfinder
+          - os: macos-latest
+            artifact: dupfinder-macos-arm64
+            binary: dupfinder
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run tests
+        run: cargo test --locked
+
+      - name: Build release
+        run: cargo build --release --locked
+
+      - name: Package binary (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp "target/release/${{ matrix.binary }}" "dist/${{ matrix.binary }}"
+          tar -czf "${{ matrix.artifact }}.tar.gz" -C dist "${{ matrix.binary }}"
+
+      - name: Package binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "target/release/${{ matrix.binary }}" -DestinationPath "${{ matrix.artifact }}.zip"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.zip
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packaged binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dupfinder-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          gh release create "$TAG" dist/* \
+            --repo "$REPO" \
+            --title "Dupfinder $TAG" \
+            --generate-notes
