@@ -4,6 +4,8 @@ use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
+use blake3::hazmat::Mode::KeyedHash;
+
 mod report;
 
 pub struct FileInfo {
@@ -137,7 +139,7 @@ fn compare_files(file1: &FileInfo, file2: &FileInfo) -> bool {
     if file1.size != file2.size {
         return false;
     }
-    match (hash_file(&file1.path), hash_file(&file2.path)) {
+    ma>>tch (hash_file(&file1.path), hash_file(&file2.path)) {
         (Ok(hash1), Ok(hash2)) => hash1 == hash2,
         _ => false,
     }
@@ -152,15 +154,29 @@ fn find_duplicates(files: &[FileInfo]) -> io::Result<Vec<Vec<PathBuf>>> {
             continue;
         }
 
-        let mut hashes: HashMap<blake3::Hash, Vec<PathBuf>> = HashMap::new();
+        let mut partial: HashMap<blake3::Hash, Vec<PathBuf = HashMap::new();
+
         for file in group {
-            let hash = hash_file(&file.path)?;
-            hashes.entry(hash).or_default().push(file.path.clone());
+            let hash = hash_partial(&file.path)?;
+            partial.entry(hash).or_default().push(file.path.clone());
         }
 
-        duplicates.extend(hashes.into_values().filter(|paths| paths.len() >= 2));
-    }
+        for candidates in partial.into_values() {
+            if candidates.len() < 2 {
+                continue;
+            }
 
+            let mut full: HashMap<blake3::Hash, Vec<PathBuf>> = HashMap::new();
+
+            for file in candidates {
+                let hash = hash_file(&file.path)?;
+                full.entry(hash).or_default().push(file.path.clone());
+            }
+
+            duplicates.extend(
+                full.into_values().filter(|paths| paths.len() >= 2)
+            );
+        }}
     Ok(duplicates)
 }
 
