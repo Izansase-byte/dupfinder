@@ -108,6 +108,31 @@ fn hash_file(path: &Path) -> io::Result<blake3::Hash> {
     Ok(hasher.finalize())
 }
 
+fn hash_partial(path: &Path) -> io::Result<blake3::Hash> {
+    const LIMIT: usize = 64 * 1024;
+
+
+    let mut file = File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0u8;65536];
+    let mut remaining = LIMIT;
+
+    while remaining > 0 {
+        let to_read = remaining.min(buffer.len());
+        let bytes_read = file.read(&mut buffer[..to_read])?;
+
+        if bytes_read == 0 {
+            break;
+        }
+
+        hasher.update(&buffer[..bytes_read]);
+        remaining -= bytes_read;
+    }
+
+    Ok(hasher.finalize())
+
+}
+
 fn compare_files(file1: &FileInfo, file2: &FileInfo) -> bool {
     if file1.size != file2.size {
         return false;
