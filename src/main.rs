@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::fs;
+use std::env;
+use std::fs::{self, File};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 mod report;
@@ -10,9 +12,32 @@ pub struct FileInfo {
 }
 
 fn main() {
-    let directorio = "test";
 
-    match scan_directory(Path::new(directorio)) {
+    let args: Vec<String> = env::args().collect(); 
+
+    if let Some(arg) = args.get(1) {
+        match arg.as_str() {
+
+            "--help" | "-h" => {
+                println!("Dupfinder - Find duplicate files");
+                println!("Usage: dupfinder [directory]");
+                println!( "\nOptions:");
+                println!("  -h, --help     Show this help message");
+                return;
+            }
+    "--version" | "-v" => {
+                println!("Dupfinder {0}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
+            _ => {}
+        }
+    }
+
+    let directory = args.get(1).map(String::as_str).unwrap_or("test");
+
+    println!("Scanning directory: {}", directory);
+
+    match scan_directory(Path::new(directory)) {
         Ok(files) => match find_duplicates(&files) {
             Ok(duplicates) => {
                 if duplicates.is_empty() {
@@ -21,10 +46,17 @@ fn main() {
 
                 for (i, group) in duplicates.iter().enumerate() {
                     println!("\nDuplicate group {}:", i + 1);
-
                     for path in group {
                         println!("  {}", path.display());
                     }
+                }
+
+                match calculate_wasted_space(&duplicates) {
+                    Ok(bytes) => {
+                        let mb = bytes as f64 / 1_048_576.0;
+                        println!("\nRecoverable space: {:.2} MB", mb);
+                    }
+                    Err(error) => eprintln!("Error calculating space: {}", error),
                 }
             }
             Err(error) => eprintln!("Error: {}", error),
@@ -33,17 +65,18 @@ fn main() {
     }
 }
 
-fn scan_directory(path: &Path) -> std::io::Result<Vec<FileInfo>> {
-    let mut files: Vec<FileInfo> = Vec::new();
+fn scan_directory(path: &Path) -> io::Result<Vec<FileInfo>> {
+    let mut files = Vec::new();
 
-    for file in fs::read_dir(path)? {
-        let file = file?;
-        if file.metadata()?.is_dir() {
-            files.extend(scan_directory(&file.path())?);
-        } else if file.metadata()?.is_file() {
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        if metadata.is_dir() {
+            files.extend(scan_directory(&entry.path())?);
+        } else if metadata.is_file() {
             files.push(FileInfo {
-                path: file.path(),
-                size: file.metadata()?.len(),
+                path: entry.path(),
+                size: metadata.len(),
             });
         }
     }
@@ -53,17 +86,26 @@ fn scan_directory(path: &Path) -> std::io::Result<Vec<FileInfo>> {
 
 fn group_files_by_size(files: &[FileInfo]) -> HashMap<u64, Vec<&FileInfo>> {
     let mut groups: HashMap<u64, Vec<&FileInfo>> = HashMap::new();
-
     for file in files {
         groups.entry(file.size).or_default().push(file);
     }
-
     groups
 }
 
-fn hash_file(path: &Path) -> std::io::Result<blake3::Hash> {
-    let content = fs::read(path)?;
-    Ok(blake3::hash(&content))
+fn hash_file(path: &Path) -> io::Result<blake3::Hash> {
+    let mut file = File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = file.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    Ok(hasher.finalize())
 }
 
 fn compare_files(file1: &FileInfo, file2: &FileInfo) -> bool {
@@ -76,28 +118,110 @@ fn compare_files(file1: &FileInfo, file2: &FileInfo) -> bool {
     }
 }
 
-fn find_duplicates(files: &[FileInfo]) -> std::io::Result<Vec<Vec<PathBuf>>> {
+fn find_duplicates(files: &[FileInfo]) -> io::Result<Vec<Vec<PathBuf>>> {
     let groups = group_files_by_size(files);
-    let mut duplicates: Vec<Vec<PathBuf>> = Vec::new();
+    let mut duplicates = Vec::new();
 
-    for (_size, group) in groups {
+    for group in groups.into_values() {
         if group.len() < 2 {
             continue;
         }
 
         let mut hashes: HashMap<blake3::Hash, Vec<PathBuf>> = HashMap::new();
-
         for file in group {
             let hash = hash_file(&file.path)?;
             hashes.entry(hash).or_default().push(file.path.clone());
         }
 
-        for (_hash, paths) in hashes {
-            if paths.len() >= 2 {
-                duplicates.push(paths);
-            }
-        }
+        duplicates.extend(hashes.into_values().filter(|paths| paths.len() >= 2));
     }
 
     Ok(duplicates)
+}
+
+fn calculate_wasted_space(duplicates: &[Vec<PathBuf>]) -> io::Result<u64> {
+    let mut wasted_space = 0;
+
+    for group in duplicates {
+        if group.len() < 2 {
+            continue;
+        }
+        let size = fs::metadata(&group[0])?.len();
+        let extra_copies = (group.len() - 1) as u64;
+        wasted_space += size * extra_copies;
+    }
+
+    Ok(wasted_space)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{alloc::System, time::UNIX_EPOCH};
+
+use super::*;
+
+    #[test]
+    fn test_same_size() {
+        let files = vec![
+            FileInfo {
+                path: PathBuf::from("a.txt"),
+                size: 100,
+            },
+            FileInfo {
+                path: PathBuf::from("b.txt"),
+                size: 100,
+            },
+        ];
+
+        let groups = group_files_by_size(&files);
+        assert_eq!(groups.get(&100).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn test_different_sizes() {
+        let files = vec![
+            FileInfo {
+                path: PathBuf::from("a.txt"),
+                size: 100,
+            },
+            FileInfo {
+                path: PathBuf::from("b.txt"),
+                size: 200,
+            },
+        ];
+
+        let groups = group_files_by_size(&files);
+        assert_eq!(groups.len(), 2);
+    }
+#[test]
+fn test_find_duplicates() -> std::io::Result<()> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+
+    let dir = std::env::temp_dir()
+        .join(format!("dupfinder_test_{}_{}", std::process::id(), unique));
+
+    fs::create_dir(&dir)?;
+
+    let result = (|| -> std::io::Result<()> {
+        fs::write(dir.join("a.txt"), "Hello Rust!")?;
+        fs::write(dir.join("b.txt"), "Hello Rust!")?;
+        fs::write(dir.join("c.txt"), "Different content")?;
+
+        let files = scan_directory(&dir)?;
+        let duplicates = find_duplicates(&files)?;
+
+        assert_eq!(duplicates.len(), 1);
+        assert_eq!(duplicates[0].len(), 2);
+
+        Ok(())
+    })();
+
+    fs::remove_dir_all(&dir)?;
+    result
+} 
 }
