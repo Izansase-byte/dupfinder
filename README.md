@@ -8,6 +8,7 @@ It is CL tool that searches duplicates.
 - File grouping by size
 - Duplicate file detection
 - Recoverable disk space calculation.
+- Partial hashing
 
 ### Available commands
 

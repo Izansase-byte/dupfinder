@@ -1,7 +1,7 @@
-use std::path::PathBuf;
 use crate::FileInfo;
+use std::path::PathBuf;
 
-pub fn print_files(files:&mut [FileInfo]) {
+pub fn print_files(files: &mut [FileInfo]) {
     files.sort_by_key(|file| file.path.clone());
     let mut x: Option<PathBuf> = None;
 
@@ -11,7 +11,7 @@ pub fn print_files(files:&mut [FileInfo]) {
             Some(folder) => {
                 if let Some(name) = i.path.file_name() {
                     if x.as_deref() == Some(folder) {
-                        println!("File name:{}",name.to_string_lossy())
+                        println!("File name:{}", name.to_string_lossy())
                     } else {
                         let profundity = match folder.strip_prefix(root) {
                             Ok(relative_path) => relative_path.components().count(),
@@ -21,13 +21,18 @@ pub fn print_files(files:&mut [FileInfo]) {
                             }
                         };
                         println!("Folder: {}", folder.display());
-                        println!("{}  File name: {}"," ".repeat(profundity),name.to_string_lossy())
+                        println!(
+                            "{}  File name: {}",
+                            " ".repeat(profundity),
+                            name.to_string_lossy()
+                        )
                     }
                 }
                 x = Some(folder.to_path_buf());
-            } 
+            }
             None => {
                 println!("This route doesn't have a parent folder")
             }
         }
-        }}
+    }
+}
