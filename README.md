@@ -32,7 +32,7 @@ cargo build --release
 
 ## Usage
 
-On Linux, SteamOS or macOS:
+On Linux or macOS:
 
 ```bash
 ./target/release/dupfinder /path/to/directory
@@ -52,7 +52,7 @@ If no directory is provided, Dupfinder scans the included `test` directory. Path
 
 ## Releases
 
-Prebuilt binaries will be available on the [Releases page](https://github.com/Izansase-byte/dupfinder/releases) after a successful release workflow. Until then, build from source using the instructions above.
+Prebuilt binaries will be available on the [Releases page](https://github.com/Izansase-byte/dupfinder/releases).
 
 ## Testing
 
@@ -61,7 +61,3 @@ Run `cargo test` to check the existing unit tests. Run `cargo run -- test` to tr
 ## Limitations and roadmap
 
 The tool currently reports results in the terminal and does not provide a graphical interface or automatic deletion. Planned improvements include clearer reporting, progress indication, export formats, and more tests for large files and edge cases.
-
-## Author
-
-Created by [Izansase-byte](https://github.com/Izansase-byte).
